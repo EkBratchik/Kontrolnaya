@@ -1,105 +1,122 @@
 package com.bsu;
 import java.io.File;
 import java.io.FileWriter;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Scanner;
+import java.io.*;
+import java.util.InputMismatchException;
 
 public class Main {
-    public static UserCasino currentUser = new UserCasino("", "", "", "", "");
-    public static void main(String[] args) {
-        File userInfo = new File(".\\src\\main\\java\\com\\bsu\\users.txt");
-        File hostelInfo = new File(".\\src\\main\\java\\com\\bsu\\bets.txt");
-        final String dateFormat = "dd.MM.yyyy";
-        try (Scanner scanner = new Scanner(System.in)) {
-            CasinoReader hostelReader = new CasinoReader(hostelInfo, dateFormat);
-            CasinoReader userReader = new CasinoReader(userInfo);
-            List<UserCasino> users = userReader.readAllRecords();
-            List<Casino> casinoes = hostelReader.readAllRecords();
-            FileWriter userWriter = new FileWriter(".\\src\\main\\java\\com\\bsu\\users.txt", true);
-            showMenu();
-            int req = scanner.nextInt();
-            while (req != 7) {
-                workWithRequests(casinoes, users, scanner, userWriter, dateFormat, req);
-                showMenu();
-                req = scanner.nextInt();
+    public static void main(String[] args) throws FileException  {
+        if (args.length >= 2) {
+            File file = Request.createFile(args[0]);
+            try (Scanner scan = new Scanner(System.in);
+                 Scanner usersReader = new Scanner(file);
+                 Scanner productsReader = new Scanner(Request.createFile(args[1]));
+                 FileWriter out = new FileWriter(file, true)) {
+                Request request = new Request();
+                request.setUsers(request.transformListOfUsers(usersReader));
+               request.setBets(request.transformToListOfBets(productsReader));
+
+                if (request.getUsers().size() != 0 || request.getBets().size() != 0) {
+                    showMenu();
+                    int input;
+                    do {
+                        System.out.println("Введите номер запроса: ");
+                        input = scan.nextInt();
+                        processRequest(scan, request, input, out);
+                    } while (input != 7);
+                } else {
+                    System.out.println("Ошибка.Нет исходных данных для чтения");
+                }
+            } catch (FileException | IOException e) {
+                System.out.println(e.getMessage());
+            } catch (InputMismatchException e) {
+                System.out.println("Неверный ввод запроса");
             }
-            userWriter.close();
-
-        } catch (Exception ex) {
-            System.out.println(ex.getMessage());
         }
-
     }
-
     public static void showMenu() {
-        System.out.println("Add new user");
-        System.out.println("Login as existing user");
-        System.out.println("Show all records");
-        System.out.println("Find casino name by casino id(admin only)");
-        System.out.println("Casino statistics");
-        System.out.println("Top casinoes");
-        System.out.println("Exit");
+        System.out.println("Регистрация пользователя");
+        System.out.println("Вход в систему");
+        System.out.println("Просмотр всех записей");
+        System.out.println("Поиск казино по номеру (только для админа)");
+        System.out.println("Статистика по каждому казино: сколько разных игр, средняя ставка по всем играм");
+        System.out.println("Топ-N казино по величине средней ставки определенной игры ");
+        System.out.println("Выход");
     }
 
-    public static void workWithRequests(List<Casino> casinoes, List<UserCasino> users, Scanner scanner,
-                                        FileWriter userWriter, String dateFormat, int req) {
-        scanner.nextLine();
-        if (currentUser.getRole().isEmpty()){
-            if(req != 1 && req != 2){
-                System.out.println("You need to login first");
-                return;
+    public static void processRequest(Scanner scan, Request request, int input, FileWriter out)
+            throws FileException, IOException {
+        switch (input) {
+            case 1: {
+                System.out.println("Введите имя пользователя, логин, почту и пароль для регистрации:");
+                scan.nextLine();
+                String name = scan.nextLine();
+                String login = scan.nextLine();
+                String email = scan.nextLine();
+                String password = scan.nextLine();
+                User user = new User(name, login, email, password, "USER", true);
+                if (request.getUsers().containsKey(user.getUsername())) {
+                    throw new FileException("Пользователь уже существует");
+                }
+                out.write("\n" + user.toString());
+                break;
+            }
+            case 2: {
+                System.out.println("Введите логин и пароль:");
+                scan.nextLine();
+                String login = scan.nextLine();
+                String password = scan.nextLine();
+                if (!request.enterSystem(login, password).getEmail().equals("")) {
+                    request.setLogged(true);
+                    request.setUser(request.enterSystem(login, password));
+                    System.out.println("Вход в систему");
+                } else {
+                    System.out.println("Неверно введены данные");
+                }
+                break;
+            }
+            case 3: {
+                System.out.println("Все записи: ");
+                request.showAllCasinoRecords();
+                break;
+            }
+            case 4: {
+                if (request.isLogged() && request.getUser().getRole().equalsIgnoreCase("ADMIN")) {
+                    System.out.println("Введите номер казино: ");
+                    Casino bet = request.findNameCasinoByNumber(scan.nextInt());
+                    if (bet == null) {
+                        System.out.println("Такого казино не существует");
+                    } else {
+                        System.out.println(bet.toString());
+                    }
+                } else {
+                    System.out.println("Вы не являетесь админом");
+                }
+                break;
+            }
+            case 5: {
+                request.showStatistics();
+                break;
+            }
+            case 6: {
+                try {
+                    System.out.println("Введите число:");
+                    int n = scan.nextInt();
+                    System.out.println("Введите игру: ");
+                    scan.nextLine();
+                    String category = scan.nextLine();
+                    request.topNCasino(n, category);
+                } catch (NumberFormatException e) {
+                    System.out.println(e.getMessage());
+                }
+                break;
+            }
+            case 7: {
+                System.out.println("Завершение процесса");
+                break;
             }
         }
-        switch (Request.RequestPr.getRequestint(req)) {
-            case ADD_USER:
-                Request.addUser(users, userWriter, scanner);
-                break;
-            case LOGIN:
-                currentUser = Request.login(users, scanner);
-                break;
-            case VIEW_ALL_RECORDS:
-                Request.showAllCasinoesRecords(casinoes);
-                break;
-            case FIND_NAME_OF_CASINO_BY_ID:
-                if(currentUser.getRole().equals("USER")){
-                    System.out.println("Admin access only ");
-                }else {
-                    try {
-                        System.out.println("Enter id: ");
-                        int id = scanner.nextInt();
-                        System.out.println(Request.findCasinoChainByCasinoId(casinoes,id));
-                    }catch (Exception ex){
-                        System.out.println("Wrong id");
-                    }
-                }
-                break;
-            case CASINO_STATEMENTS:
-                System.out.println("Enter casino name:");
-                String casino = scanner.nextLine();
-                Request.chainStats(casinoes,casino);
-                break;
-            case TOP_CASINOES:
-                try{
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern(dateFormat);
-                    int n; LocalDate ub; LocalDate lb;
-                    System.out.println("Enter " + "n:");
-                    n = scanner.nextInt(); scanner.nextLine();
-                    System.out.println("Enter date lower bound(dd.MM.yyyy)");
-                    String lbstr = scanner.nextLine();
-                    lb = LocalDate.parse(lbstr,formatter);
-                    System.out.println("Enter date upper bound(dd.MM.yyyy)");
-                    String ubstr = scanner.nextLine();
-                    ub = LocalDate.parse(ubstr,formatter);
-                    Request.topCasino(casinoes,lb,ub,n);
-                }catch (Exception ex){
-                    System.out.println("Can't parse expressions");
-                }
-                break;
-            case DEFAULT:
-                System.out.println("Unknown request");
-                break;
-        }
+
     }
 }
